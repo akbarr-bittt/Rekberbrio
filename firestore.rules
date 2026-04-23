@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required) - User's unique identifier
+    //   - email: string (required) - User's email address
+    //   - name: string (required) - User's full name
+    //   - balance: number (required) - User's internal balance
+    //   - createdAt: timestamp (required) - When the user was created
+    //
+    // Collection: transactions
+    // Document ID: transactionId
+    // Fields:
+    //   - title: string (required) - Title of the transaction
+    //   - description: string (required) - Description of the goods or services
+    //   - price: number (required) - Price of the goods or services
+    //   - fee: number (required) - Platform fee (2%)
+    //   - total: number (required) - Total amount to be paid (price + fee)
+    //   - creatorId: string (required) - UID of the user who created the transaction
+    //   - creatorRole: string (required) - Role of the creator (buyer/seller)
+    //   - buyerId: string (optional) - UID of the buyer
+    //   - sellerId: string (optional) - UID of the seller
+    //   - status: string (required) - Current status of the transaction
+    //   - createdAt: timestamp (required) - When the transaction was created
+    //   - updatedAt: timestamp (required) - When the transaction was last updated
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          request.auth.token.email == "akbar.is.messi@gmail.com" ||
+          request.auth.token.email == "ralif152007@gmail.com" ||
+          request.auth.token.email == "indonesiaronaldomessi@gmail.com" ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin')
+        );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'name', 'balance', 'createdAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.email is string && isValidEmail(data.email) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.balance is number && data.balance >= 0 &&
+             data.createdAt is timestamp &&
+             (!('pin' in data) || (data.pin is string && data.pin.size() == 6)) &&
+             (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
+             (!('phone' in data) || data.phone is string) &&
+             (!('bio' in data) || data.bio is string && data.bio.size() <= 500) &&
+             (!('bankName' in data) || data.bankName is string) &&
+             (!('bankAccount' in data) || data.bankAccount is string) &&
+             (!('bankAccountName' in data) || data.bankAccountName is string) &&
+             (!('role' in data) || data.role in ['user', 'admin']) &&
+             (!('isBlocked' in data) || data.isBlocked is bool) &&
+             (!('blockedUntil' in data) || data.blockedUntil is timestamp);
+    }
+
+    function isValidTransaction(data) {
+      return hasRequiredFields(['title', 'description', 'price', 'fee', 'total', 'creatorId', 'creatorRole', 'status', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.price is number && data.price >= 0 &&
+             data.fee is number && data.fee >= 0 &&
+             data.total is number && data.total == data.price + data.fee &&
+             data.creatorId is string &&
+             data.creatorRole in ['buyer', 'seller'] &&
+             data.status in ['waiting_payment', 'waiting_payment_confirmation', 'funds_held', 'processing', 'shipped', 'completed', 'cancelled', 'disputed', 'REFUNDED_TO_BUYER'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (!('buyerId' in data) || data.buyerId is string) &&
+             (!('sellerId' in data) || data.sellerId is string) &&
+             (!('isClaimed' in data) || data.isClaimed is bool) &&
+             (!('buyerReview' in data) || (data.buyerReview is map && data.buyerReview.rating is number && data.buyerReview.rating >= 1 && data.buyerReview.rating <= 5 && data.buyerReview.comment is string && data.buyerReview.comment.size() <= 1000 && data.buyerReview.createdAt is timestamp)) &&
+             (!('adminConfirmed' in data) || data.adminConfirmed is bool) &&
+             (!('adminConfirmedAt' in data) || data.adminConfirmedAt is timestamp) &&
+             (!('adminConfirmedBy' in data) || data.adminConfirmedBy is string) &&
+             (!('resolution' in data) || data.resolution in ['buyer', 'seller']) &&
+             (!('resolvedAt' in data) || data.resolvedAt is timestamp) &&
+             (!('resolvedBy' in data) || data.resolvedBy is string) &&
+             (!('sellerReview' in data) || (data.sellerReview is map && data.sellerReview.rating is number && data.sellerReview.rating >= 1 && data.sellerReview.rating <= 5 && data.sellerReview.comment is string && data.sellerReview.comment.size() <= 1000 && data.sellerReview.createdAt is timestamp));
+    }
+
+    function isValidTopUp(data) {
+      return hasRequiredFields(['userId', 'nominal', 'uniqueCode', 'amount', 'status', 'createdAt', 'expiresAt']) &&
+             data.userId is string &&
+             data.nominal is number && data.nominal > 0 &&
+             data.uniqueCode is number && data.uniqueCode >= 100 && data.uniqueCode <= 999 &&
+             data.amount is number && data.amount == data.nominal + data.uniqueCode &&
+             data.status in ['PENDING', 'SUCCESS', 'REJECTED', 'EXPIRED'] &&
+             data.createdAt is timestamp &&
+             data.expiresAt is timestamp &&
+             (!('adminId' in data) || data.adminId is string) &&
+             (!('processedAt' in data) || data.processedAt is timestamp);
+    }
+
+    function isValidWithdrawal(data) {
+      return hasRequiredFields(['userId', 'userName', 'amount', 'status', 'bankName', 'bankAccount', 'bankAccountName', 'createdAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.userName is string &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED'] &&
+             data.bankName is string &&
+             data.bankAccount is string &&
+             data.bankAccountName is string &&
+             data.createdAt is timestamp &&
+             (!('adminId' in data) || data.adminId is string) &&
+             (!('rejectReason' in data) || data.rejectReason is string) &&
+             (!('processedAt' in data) || data.processedAt is timestamp) &&
+             (!('completedAt' in data) || data.completedAt is timestamp);
+    }
+
+    function isValidPlatformProfit(data) {
+      return hasRequiredFields(['transactionId', 'fee', 'type', 'createdAt']) &&
+             data.transactionId is string &&
+             data.fee is number && data.fee >= 0 &&
+             data.type is string &&
+             data.createdAt is timestamp &&
+             (!('description' in data) || data.description is string);
+    }
+
+    function isValidLedger(data) {
+      return hasRequiredFields(['userId', 'type', 'amount', 'reference', 'createdAt']) &&
+             data.userId is string &&
+             data.type in ['CREDIT', 'DEBIT'] &&
+             data.amount is number && data.amount > 0 &&
+             data.reference is string &&
+             data.createdAt is timestamp &&
+             (!('description' in data) || data.description is string) &&
+             (!('adminId' in data) || data.adminId is string);
+    }
+
+    function isPlatformOnline() {
+      return !exists(/databases/$(database)/documents/settings/global) ||
+             get(/databases/$(database)/documents/settings/global).data.get('isOffline', false) == false;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.get('role', 'user') == 'user';
+      allow update: if true;
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isAuthenticated();
+      
+      allow list: if isAuthenticated() && (
+        resource.data.creatorId == request.auth.uid ||
+        ('buyerId' in resource.data && resource.data.buyerId == request.auth.uid) ||
+        ('sellerId' in resource.data && resource.data.sellerId == request.auth.uid) ||
+        isAdmin()
+      );
+
+      allow create: if isAuthenticated() &&
+                    isPlatformOnline() &&
+                    isValidTransaction(request.resource.data) &&
+                    request.resource.data.creatorId == request.auth.uid &&
+                    (
+                      (request.resource.data.creatorRole == 'buyer' && request.resource.data.buyerId == request.auth.uid) ||
+                      (request.resource.data.creatorRole == 'seller' && request.resource.data.sellerId == request.auth.uid)
+                    );
+
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    match /settings/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /topups/{topupId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId &&
+                    isPlatformOnline() &&
+                    isValidTopUp(request.resource.data) &&
+                    request.resource.data.status == 'PENDING';
+      allow update: if isAdmin();
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId &&
+                    isPlatformOnline() &&
+                    isValidWithdrawal(request.resource.data) &&
+                    request.resource.data.status == 'PENDING';
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    match /ledgers/{ledgerId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidLedger(request.resource.data) && (isAdmin() || (isAuthenticated() && request.auth.uid == request.resource.data.userId && request.resource.data.type == 'DEBIT'));
+      allow update, delete: if true;
+    }
+    match /system_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if true;
+    }
+    match /platform_profits/{profitId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidPlatformProfit(request.resource.data);
+      allow update, delete: if true;
+    }
+    
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || (isAdmin() && resource.data.roleTarget == 'admin'));
+      allow create: if isAuthenticated() && 
+                    request.resource.data.keys().hasAll(['userId', 'roleTarget', 'type', 'message', 'status', 'createdAt']) &&
+                    (
+                      request.resource.data.userId == request.auth.uid || 
+                      isAdmin() || 
+                      request.resource.data.roleTarget == 'admin' ||
+                      request.resource.data.roleTarget == 'user'
+                    );
+      allow update: if true;
+      allow delete: if true;
+    }
+  }
+}

@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: #FDFCF8;
+  --color-paper-alt: #FAF7F2;
+  --color-pencil: #A8A29E;
+  --color-pencil-dark: #78716C;
+  --color-divider: #E7E5E4;
+  
+  --animate-shake: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  --animate-fade-in: fadeIn 0.3s ease-in-out;
+
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-paper);
+    color: #1c1917;
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #E7E5E4;
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #D6D3D1;
+  }
+  
+  .break-words {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 text-white rounded-lg py-3 px-4 font-bold transition-all active:scale-[0.98] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed disabled:active:scale-100 hover:bg-[#1E40AF];
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  
+  .btn-secondary {
+    @apply bg-transparent border border-pencil text-gray-700 rounded-lg py-3 px-4 font-medium transition-all active:scale-[0.98] hover:bg-black/5 disabled:bg-gray-200 disabled:text-gray-400 disabled:border-transparent disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-tertiary {
+    @apply bg-transparent border-none text-blue-600 font-medium transition-all active:scale-[0.98] hover:underline disabled:text-gray-400 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white rounded-lg py-3 px-4 font-bold transition-all active:scale-[0.98] hover:bg-red-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed disabled:active:scale-100;
+    box-shadow: 0 2px 6px rgba(220,38,38,0.15);
+  }
+
+  .btn-card {
+    @apply bg-transparent border border-stone-300 text-gray-900 rounded-md py-2 px-3 text-sm font-medium transition-all active:scale-[0.98] hover:bg-black/5 disabled:bg-gray-200 disabled:text-gray-400 disabled:border-transparent disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+}
